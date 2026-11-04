@@ -1,0 +1,10 @@
+.build/
+dist/
+.DS_Store
+.swiftpm/
+*.dSYM/
+*.ips
+*.log
+.env
+.env.*
+!.env.example

@@ -1,0 +1,36 @@
+name: CloudBeacon checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Record toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+          uname -m
+      - name: XCTest
+        run: swift test
+      - name: Parser, security, and readiness checks
+        run: bash Scripts/check-all.sh
+      - name: Build local bundle
+        run: bash Scripts/build-app.sh --local
+      - name: Verify bundle
+        run: |
+          codesign --verify --strict --verbose=2 dist/CloudBeacon.app
+          plutil -lint dist/CloudBeacon.app/Contents/Info.plist
+          test -s dist/CloudBeacon.app/Contents/Resources/CloudBeacon.icns
