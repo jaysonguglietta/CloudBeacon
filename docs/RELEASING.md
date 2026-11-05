@@ -6,7 +6,7 @@ Run `bash Scripts/check-all.sh`, then `bash Scripts/build-app.sh --local`. The s
 
 A clean staging directory prevents stale bundle files from entering the new artifact. Compilation, icon generation, plist assembly, signing, and strict verification must succeed before replacement of the local `dist/CloudBeacon.app`. The app is sandboxed and hardened but ad-hoc signed. This mode requires no signing secrets and is not an authenticated public release.
 
-Version defaults are 1.1.0 (build 2). Override with `APP_VERSION=x.y.z` and numeric `BUILD_NUMBER`; malformed values fail before building. Increase build numbers for delivered artifacts. The internal executable/target remains AWSStatus; display name and bundle output are CloudBeacon. Keeping the existing local bundle ID preserves preferences and login registration.
+Version defaults are 1.2.0 (build 3). Override with `APP_VERSION=x.y.z` and numeric `BUILD_NUMBER`; malformed values fail before building. Increase build numbers for delivered artifacts. The internal executable/target remains AWSStatus; display name and bundle output are CloudBeacon. Keeping the existing local bundle ID preserves preferences and login registration.
 
 ## Public distribution gate
 
@@ -16,8 +16,8 @@ This repository does not contain signing keys or notarization credentials. On a 
 export DEVELOPER_ID_IDENTITY='Developer ID Application: Your Team (TEAMID)'
 export NOTARY_PROFILE='your-stored-keychain-profile'
 export RELEASE_BUNDLE_ID='your.stable.bundle.identifier'
-export APP_VERSION='1.1.0'
-export BUILD_NUMBER='2'
+export APP_VERSION='1.2.0'
+export BUILD_NUMBER='3'
 bash Scripts/check-all.sh
 swift test
 bash Scripts/build-app.sh --release

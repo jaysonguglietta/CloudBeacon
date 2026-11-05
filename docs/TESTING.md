@@ -33,3 +33,13 @@ Record OS, architecture, app version/build, display configuration, and actual ou
 | Public release | Developer ID signature, notarization, stapled ticket, Gatekeeper on clean Mac; separately verify each advertised OS/architecture |
 
 Current minimum supported OS is declared as macOS 13, not yet independently exercised. Intel builds are not produced/tested by the current host build. Local XCTest/default backend limitations and executed results are recorded in [REMEDIATION.md](REMEDIATION.md).
+
+## Version 1.2 acceptance additions
+
+`bash Scripts/check-features.sh` is included in check-all and exercises catalog loading/path rejection, exact 24-hour boundaries, age-out semantics, notification baseline/deduplication/restart/content changes/preferences, expiry/deselection cleanup decisions, bounded concurrency, partial failure, recovery, scoped report identity, watchlist persistence/limits, deliberate empty selection, and cancellation/late-result suppression.
+
+Existing readiness assertions now expect a successful empty/recently quiet feed to report **No reports in the last 24 hours**, rather than unconfirmed simply because history is empty. Failed/stale/saved/ambiguous checks still cannot yield fresh green. Historical test counts above apply to version 1.1 only.
+
+Manual additions: edit feeds across two regions, search and remove selections, Cancel versus Save, enforce 20-feed limit, restart, remove a feed mid-request, inspect mixed-success coverage, and check that the timeline/source summaries are correctly scoped. Verify the catalog loads from the installed app without the checkout/build directory present.
+
+For notifications, exercise macOS not-determined/allowed/denied/revoked states with explicit opt-in, first-fetch baseline without a history flood, one new issue, one resolution preference change, no duplicate across polls/restart, and no alert for a report older than 24 hours. Check actual banner text, optional sound, fixed-dashboard click, and Focus suppression without a false delivery guarantee. Seed only this app's test notices to check publication-time expiry, deselection removal, confirmed manual clear, and cleanup after wake/relaunch. These system-level permission/delivery paths are not exercised by pure policy tests or CI, and the agent does not auto-enable notifications.

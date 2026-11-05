@@ -34,3 +34,4 @@ jobs:
           codesign --verify --strict --verbose=2 dist/CloudBeacon.app
           plutil -lint dist/CloudBeacon.app/Contents/Info.plist
           test -s dist/CloudBeacon.app/Contents/Resources/CloudBeacon.icns
+          cmp Sources/StatusCore/Resources/aws-feeds.json dist/CloudBeacon.app/Contents/Resources/aws-feeds.json

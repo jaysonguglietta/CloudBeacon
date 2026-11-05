@@ -14,7 +14,7 @@ enum StatusIcon {
             switch health {
             case .disruption: mark = "×"
             case .degraded: mark = "!"
-            case .resolved: mark = "✓"
+            case .resolved, .quiet: mark = "✓"
             case .unknown: mark = "?"
             }
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: NSColor.black]
@@ -30,7 +30,7 @@ enum StatusIcon {
         switch health {
         case .disruption: return NSColor(srgbRed: 0.96, green: 0.23, blue: 0.26, alpha: 1)
         case .degraded: return NSColor(srgbRed: 1, green: 0.69, blue: 0.12, alpha: 1)
-        case .resolved: return NSColor(srgbRed: 0.19, green: 0.82, blue: 0.39, alpha: 1)
+        case .resolved, .quiet: return NSColor(srgbRed: 0.19, green: 0.82, blue: 0.39, alpha: 1)
         case .unknown: return NSColor(srgbRed: 0.60, green: 0.63, blue: 0.67, alpha: 1)
         }
     }
@@ -38,7 +38,7 @@ enum StatusIcon {
         switch health {
         case .disruption: return "xmark.circle.fill"
         case .degraded: return "exclamationmark.triangle.fill"
-        case .resolved: return "checkmark.circle.fill"
+        case .resolved, .quiet: return "checkmark.circle.fill"
         case .unknown: return "questionmark.circle.fill"
         }
     }

@@ -37,6 +37,8 @@ import Combine
     private var lastAttemptElapsed: TimeInterval?
     private var successElapsed: TimeInterval?
     private var failures = 0
+    private var sourceItems: [FeedItem] = []
+    public var isDue: Bool { elapsedNow() >= due }
     public var health: Health { snapshot.health }
     public var error: String? { failure?.message }
 
@@ -57,7 +59,7 @@ import Combine
         if remembersUpdates {
             do {
                 if let saved = try cache?.load() {
-                    items = saved.items; checked = saved.checked; savedCopy = true
+                    sourceItems = saved.items; items = saved.items; checked = saved.checked; savedCopy = true
                 }
             } catch {
                 storageMessage = "The saved copy could not be read. Refresh to download a new copy."
@@ -70,7 +72,15 @@ import Combine
     public func updateFreshness() {
         stale = successElapsed.map { elapsedNow() - $0 >= Double(interval * 120) } ?? true
         nextCheck = wallNow().addingTimeInterval(max(0, due - elapsedNow()))
-        snapshot = .evaluate(items: items, checked: checked, stale: stale, savedCopy: savedCopy, failure: failure?.message, now: wallNow())
+        let recent = RecentWindow.items(sourceItems, now: wallNow())
+        if recent != items {
+            items = recent
+            if remembersUpdates, let checked {
+                do { try cache?.save(SavedSnapshot(checked: checked, items: recent)) }
+                catch { storageMessage = "Couldn’t prune the saved copy. Live monitoring continues; try clearing saved updates." }
+            }
+        }
+        snapshot = .evaluate(items: sourceItems, checked: checked, stale: stale, savedCopy: savedCopy, failure: failure?.message, now: wallNow())
     }
 
     public func poll() async {
@@ -94,7 +104,7 @@ import Combine
             let task = Task.detached { try FeedParser.parse(data) }
             let parsed = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
             try Task.checkCancellation()
-            items = parsed; checked = wallNow(); successElapsed = elapsedNow()
+            sourceItems = parsed; items = RecentWindow.items(parsed, now: wallNow()); checked = wallNow(); successElapsed = elapsedNow()
             savedCopy = false; failure = nil; failures = 0
             due = elapsedNow() + Double(interval * 60)
             record("Success · \(parsed.count) updates")

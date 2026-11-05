@@ -30,3 +30,15 @@ Updated November 4, 2026 for CloudBeacon 1.1.0 (2). The [security review](../SEC
 Automated computer-use previously timed out before interacting with the menu bar app. Compilation/process presence is not substituted for a visual pass. Perform the manual acceptance matrix before broad distribution. OS permission approvals and Xcode license acceptance remain user-controlled. This source delivery does not certify compatibility on untested macOS versions or architectures, and does not include an authenticated public binary release.
 
 No accounts, billing, enterprise roles, team collaboration, AI summaries, or unrelated SaaS features were added. Current work repairs and completes the existing single-feed informational utility. Optional new workflows remain separate product decisions.
+
+## Version 1.2 feature implementation — November 5, 2026
+
+The owner explicitly requested the previously exploratory F08/F09 capabilities, plus removal of reports/notifications older than 24 hours. They are now implemented, superseding the earlier optional/not-implemented rows:
+
+- **F08:** opt-in UserNotifications controller, resolution/sound preferences, permission reconciliation and recovery, serialized/coalesced delivery, first-check baseline, persistent bounded fingerprint deduplication, fixed-dashboard click, and publication-age/deselection cleanup with manual confirmed clear. Pure policy/retention tests are automated; actual OS permission and banner delivery remain manual gates.
+- **F09:** bundled AWS dashboard catalog, region/service search and staged Save/Cancel selection, 20-feed cap, empty watchlist, persisted choices, three-way concurrency, independent per-feed cadence/retries, explicit coverage, scoped timelines, and generation-based cancellation/late-result suppression.
+- **24-hour requirement:** reports are filtered and aged out by publication time, with saved copies pruned on heartbeat and live success. Expired reports do not become resolution evidence. Green quiet explicitly means no recent reports; incomplete/failed coverage remains unknown unless a known issue takes precedence with a warning.
+
+The bundled metadata snapshot was retrieved from AWS's public `services.json` on November 5, 2026. Representative EC2 N. Virginia and S3 Oregon RSS responses were verified; not every catalog feed is live-tested. Failed/unavailable selected feeds remain visibly unconfirmed.
+
+Executed for 1.2 locally: **138 offline assertions** (14 parser, 38 security, 43 readiness, 43 watchlist/notification/window), release compilation, strict local signature verification, and bundled catalog identity/uniqueness checks passed. Live transport→parser→monitor checks passed for UAE multiple-services, EC2 N. Virginia, and S3 Oregon; each had zero reports inside the current 24-hour window at that check. Native banner/permission/Focus behavior still requires user-authorized manual acceptance; no notification permission was auto-enabled by the agent.

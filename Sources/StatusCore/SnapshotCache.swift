@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public struct SavedSnapshot: Codable {
     public let version: Int
@@ -10,10 +11,12 @@ public struct SavedSnapshot: Codable {
 public final class SnapshotCache {
     private let url: URL
     public init(url: URL) { self.url = url }
-    public static func applicationCache() -> SnapshotCache {
+    public static func applicationCache(feedID: String = FeedDescriptor.original.id) -> SnapshotCache {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CloudBeacon", isDirectory: true)
-        return SnapshotCache(url: folder.appendingPathComponent("last-success.json"))
+        let digest = SHA256.hash(data: Data(feedID.utf8)).map { String(format: "%02x", $0) }.joined()
+        let filename = feedID == FeedDescriptor.original.id ? "last-success.json" : "feed-\(digest).json"
+        return SnapshotCache(url: folder.appendingPathComponent(filename))
     }
     public func load() throws -> SavedSnapshot? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }

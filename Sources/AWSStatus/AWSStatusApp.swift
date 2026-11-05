@@ -6,7 +6,7 @@ import StatusCore
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     var body: some Scene {
         MenuBarExtra {
-            StatusView(store: delegate.monitoring.store, settings: delegate.settings)
+            StatusView(store: delegate.monitoring.store, settings: delegate.settings, notifications: delegate.monitoring.notifications)
         } label: {
             MenuLabel(store: delegate.monitoring.store)
         }
@@ -15,15 +15,15 @@ import StatusCore
 }
 
 struct MenuLabel: View {
-    @ObservedObject var store: FeedMonitor
+    @ObservedObject var store: WatchStore
     var body: some View {
         HStack(spacing: 5) {
             Image(nsImage: StatusIcon.image(for: store.health)).renderingMode(.original)
             Text("AWS")
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("CloudBeacon. AWS UAE: \(store.health.label). \(store.snapshot.reason)")
-        .help("AWS UAE: \(store.health.label)\n\(store.snapshot.reason)")
+        .accessibilityLabel("CloudBeacon. Selected AWS feeds: \(store.health.label). \(store.snapshot.reason)")
+        .help("Selected AWS feeds: \(store.health.label)\n\(store.snapshot.reason)")
     }
 }
 
@@ -35,11 +35,14 @@ struct MenuLabel: View {
     @Published var preview: Preview?
     @Published var feedback: String?
     @Published var confirmClear = false
+    @Published var confirmNotifications = false
+    @Published var editingWatchlist = false
 }
 
 struct StatusView: View {
-    @ObservedObject var store: FeedMonitor
+    @ObservedObject var store: WatchStore
     @ObservedObject var settings: SettingsController
+    @ObservedObject var notifications: NotificationController
     @StateObject private var ui = PopoverState()
     private var contentHeight: CGFloat { min(520, max(260, (NSScreen.main?.visibleFrame.height ?? 800) - 220)) }
     var body: some View {
@@ -61,7 +64,7 @@ struct StatusView: View {
                     if ui.settings { settingsView }
                     if let preview = ui.preview { previewView(preview) }
                     if let feedback = ui.feedback {
-                        Label(feedback, systemImage: "checkmark.circle")
+                        Label(feedback, systemImage: feedback.hasPrefix("Couldn’t") ? "exclamationmark.triangle" : "checkmark.circle")
                             .font(.caption).foregroundStyle(.secondary).accessibilityLabel(feedback)
                     }
                     history
@@ -71,34 +74,46 @@ struct StatusView: View {
             footer
         }
         .frame(width: 420)
-        .onAppear { settings.reconcile(); store.updateFreshness() }
-        .onChange(of: store.items) { items in ui.expanded.formIntersection(Set(items.map(\.id))) }
+        .onAppear { settings.reconcile(); store.updateFreshness(); Task { await notifications.reconcile(); await notifications.cleanup() } }
+        .onChange(of: store.reports) { items in ui.expanded.formIntersection(Set(items.map(\.id))) }
         .confirmationDialog("Clear saved updates?", isPresented: $ui.confirmClear, titleVisibility: .visible) {
             Button("Clear saved updates", role: .destructive) { store.clearSavedUpdates() }
             Button("Cancel", role: .cancel) {}
-        } message: { Text("This removes the offline copy. Current updates remain in memory; a later successful check may save a new copy if enabled.") }
+        } message: { Text("This removes saved copies for your watched feeds. The current 24-hour view remains in memory; later successful checks may save new copies if enabled.") }
+        .confirmationDialog("Clear delivered CloudBeacon notifications?", isPresented: $ui.confirmNotifications, titleVisibility: .visible) {
+            Button("Clear delivered notifications", role: .destructive) { notifications.clearDelivered() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("Seen reports will not be replayed. Future new reports may still notify if enabled.") }
     }
 
     private var statusHeader: some View {
         VStack(alignment: .leading, spacing: 9) {
-            Text("MIDDLE EAST · UAE").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("YOUR AWS WATCHLIST · LAST 24 HOURS").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             Label {
                 Text(store.health.label).foregroundStyle(.primary)
             } icon: {
                 Image(systemName: StatusIcon.symbol(for: store.health)).foregroundStyle(Color(nsColor: StatusIcon.tint(for: store.health)))
             }.font(.title3.weight(.semibold))
-            Text("Public reports · Multiple services · me-central-1").font(.subheadline).foregroundStyle(.secondary)
+            Text(store.scopeLabel).font(.subheadline).foregroundStyle(.secondary)
             Text(store.snapshot.reason).font(.callout).fixedSize(horizontal: false, vertical: true)
-            if store.savedCopy { Label("Saved copy · not a live check", systemImage: "internaldrive").font(.caption).foregroundStyle(.secondary) }
-            Text("This feed covers this region only. It does not confirm all AWS services or account-specific resource health.")
+            Text("Only selected feeds and reports published within 24 hours are included. This does not confirm all AWS services or account-specific health.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            DisclosureGroup("Feed coverage (\(store.coverage.filter { $0.snapshot.health != .unknown }.count)/\(store.feeds.count) confirmed)") {
+                ForEach(store.coverage) { coverage in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(coverage.feed.label, systemImage: StatusIcon.symbol(for: coverage.snapshot.health)).font(.caption.weight(.semibold))
+                        Text(coverage.snapshot.reason).font(.caption).foregroundStyle(.secondary)
+                        Text("Last success: \(dateText(coverage.checked))").font(.caption2).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 5)
+                }
+            }.font(.caption)
             DisclosureGroup("Status guide") {
                 VStack(alignment: .leading, spacing: 7) {
                     legend(.disruption, "Red × — latest report describes disruption")
                     legend(.degraded, "Amber ! — latest report describes degradation")
-                    legend(.resolved, "Green ✓ — latest report says its issue resolved")
+                    legend(.resolved, "Green ✓ — no recent reports, or latest reports resolved")
                     legend(.unknown, "Gray ? — report or connection unconfirmed")
-                    Text("An older unresolved report never becomes green just because time has passed.").font(.caption).foregroundStyle(.secondary)
+                    Text("Older reports are hidden, not marked recovered. Aging out of this 24-hour view is not proof that an issue ended.").font(.caption).foregroundStyle(.secondary)
                 }.padding(.top, 8)
             }.font(.caption)
         }
@@ -114,39 +129,41 @@ struct StatusView: View {
     private var history: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("REPORT TIMELINE").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("REPORTS · LAST 24 HOURS").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(store.items.count) updates").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                Text("\(store.reports.count) updates").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
-            if !store.items.isEmpty {
+            if !store.reports.isEmpty {
                 TextField("Search titles and descriptions", text: $ui.search)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Search feed updates")
             }
-            if store.loading && store.items.isEmpty {
+            if store.loading && store.reports.isEmpty {
                 ProgressView("Checking AWS…").frame(maxWidth: .infinity).padding()
-            } else if store.items.isEmpty {
-                Label("No updates to display. Refresh to retry, or open AWS Health for more context.", systemImage: "tray")
+            } else if store.reports.isEmpty {
+                Label("No selected-feed reports were published in the last 24 hours. Feed coverage shows whether checks succeeded.", systemImage: "tray")
                     .font(.callout).foregroundStyle(.secondary)
             } else {
-                let filtered = store.items.filter { ui.search.isEmpty || ($0.title + $0.body).localizedCaseInsensitiveContains(ui.search) }
+                let filtered = store.reports.filter { ui.search.isEmpty || ($0.item.title + $0.item.body).localizedCaseInsensitiveContains(ui.search) }
                 if filtered.isEmpty {
                     Text("No updates match “\(ui.search)”.").foregroundStyle(.secondary)
                     Button("Clear search") { ui.search = "" }
                 }
-                ForEach(filtered) { item in
-                    DisclosureGroup(isExpanded: Binding(get: { ui.expanded.contains(item.id) }, set: { expanded in
-                        if expanded { ui.expanded.insert(item.id) } else { ui.expanded.remove(item.id) }
+                ForEach(filtered) { report in
+                    let item = report.item
+                    DisclosureGroup(isExpanded: Binding(get: { ui.expanded.contains(report.id) }, set: { expanded in
+                        if expanded { ui.expanded.insert(report.id) } else { ui.expanded.remove(report.id) }
                     })) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(item.body.isEmpty ? "No details were included in this update." : item.body)
                                 .font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                             Button("Preview update summary…") {
-                                ui.preview = .init(title: "Update summary", text: summary(item))
+                                ui.preview = .init(title: "Update summary", text: summary(report))
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
                     } label: {
                         VStack(alignment: .leading, spacing: 5) {
-                            if item.id == store.items.first?.id { Text("LATEST REPORT").font(.caption2.weight(.semibold)).foregroundStyle(.secondary) }
+                            if report.id == store.reports.first?.id { Text("LATEST REPORT").font(.caption2.weight(.semibold)).foregroundStyle(.secondary) }
+                            Text(report.feed.label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                             Text(item.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                             Text(dateText(item.date)).font(.caption).foregroundStyle(.secondary)
                         }
@@ -159,6 +176,13 @@ struct StatusView: View {
     private var settingsView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("SETTINGS").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("Monitored feeds: \(store.feeds.count)/\(WatchStore.maximumFeeds)").font(.subheadline.weight(.semibold))
+            Button(ui.editingWatchlist ? "Close feed editor" : "Choose regions and services…") { ui.editingWatchlist.toggle() }
+            if ui.editingWatchlist {
+                WatchlistEditor(store: store, notifications: notifications) { ui.editingWatchlist = false }
+            }
+            notificationSettings
+            Divider()
             Picker("Check every", selection: $store.interval) {
                 Text("1 minute").tag(1); Text("5 minutes").tag(5); Text("15 minutes").tag(15)
             }
@@ -205,11 +229,12 @@ struct StatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Last success: \(dateText(store.checked))").font(.caption).foregroundStyle(.secondary)
             HStack {
-                Text(store.loading ? "Checking AWS…" : "Next: \(store.nextCheck?.formatted(date: .omitted, time: .shortened) ?? "Now")")
+                Text(store.feeds.isEmpty ? "Choose feeds in Settings" : store.loading ? "Checking AWS…" : "Next: \(store.nextCheck?.formatted(date: .omitted, time: .shortened) ?? "Now")")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button { Task { await store.refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                    .disabled(store.loading).keyboardShortcut("r")
+                    .disabled(store.loading || store.feeds.isEmpty).keyboardShortcut("r")
+                    .help(store.feeds.isEmpty ? "Choose at least one monitored feed in Settings first." : "Refresh your selected AWS feeds")
             }
             HStack {
                 Link("Open AWS Health ↗", destination: URL(string: "https://health.aws.amazon.com/health/status")!)
@@ -222,7 +247,24 @@ struct StatusView: View {
         guard let date else { return "Not available" }
         return date.formatted(date: .abbreviated, time: .shortened) + " " + (TimeZone.current.abbreviation(for: date) ?? "local time")
     }
-    private func summary(_ item: FeedItem) -> String {
-        "CloudBeacon · AWS public regional report\nMultiple services · UAE · me-central-1\n\(item.title)\nPublished: \(dateText(item.date))\n\n\(item.body)\n\nSource: https://status.aws.amazon.com/rss/multipleservices-me-central-1.rss\nDashboard: https://health.aws.amazon.com/health/status\nNot a global or account-specific all-clear."
+    private func summary(_ report: ScopedReport) -> String {
+        let item = report.item
+        return "CloudBeacon · AWS public report\n\(report.feed.label)\n\(item.title)\nPublished: \(dateText(item.date))\n\n\(item.body)\n\nSource: \(report.feed.url.absoluteString)\nDashboard: https://health.aws.amazon.com/health/status\nScope: selected feeds, last 24 hours; not an AWS-wide all-clear."
+    }
+
+    private var notificationSettings: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Toggle("Notify me about new AWS reports", isOn: Binding(get: { notifications.enabled }, set: notifications.setEnabled))
+                .disabled(notifications.busy)
+            if notifications.busy { ProgressView("Requesting macOS permission…").font(.caption) }
+            Text(notifications.authorization).font(.caption).foregroundStyle(.secondary)
+            if !notifications.allowed { Button("Open notification settings…", action: notifications.openSystemSettings) }
+            Toggle("Include resolution reports", isOn: $notifications.resolutions).disabled(!notifications.enabled)
+            Toggle("Play notification sound", isOn: $notifications.sound).disabled(!notifications.enabled)
+            Text("Alerts start with new reports after the first check. Existing history is not replayed. Reports and delivered alerts expire 24 hours after publication; cleanup runs while CloudBeacon is open, including after wake.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let message = notifications.message { Text(message).font(.caption) }
+            Button("Clear delivered CloudBeacon notifications…") { ui.confirmNotifications = true }
+        }
     }
 }

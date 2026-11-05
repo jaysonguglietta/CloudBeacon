@@ -51,9 +51,10 @@ final class FixtureFetcher: FeedFetching {
         let originalDate = clock.date
         let resolved = StatusSnapshot.evaluate(items: prepended, checked: clock.date, stale: false, savedCopy: false, failure: nil, now: clock.date)
         check(resolved.health == .resolved && resolved.reason.contains("does not establish"), "Resolution remains scoped to latest report")
+        check(StatusSnapshot.evaluate(items: [], checked: clock.date, stale: false, savedCopy: false, failure: nil, now: clock.date).health == .quiet, "Successful empty feed means no recent reports")
         let undated = FeedItem(id: "undated", title: "[RESOLVED] Unknown date", body: "", date: nil)
         let future = FeedItem(id: "future", title: "[RESOLVED] Future", body: "", date: clock.date.addingTimeInterval(301))
-        for items in [[], [undated], [future], parsed + [undated]] {
+        for items in [[undated], [future], parsed + [undated]] {
             let snapshot = StatusSnapshot.evaluate(items: items, checked: clock.date, stale: false, savedCopy: false, failure: nil, now: clock.date)
             check(snapshot.health == .unknown, "Ambiguous input cannot turn green")
         }
@@ -141,7 +142,7 @@ final class FixtureFetcher: FeedFetching {
         check(!store.loading, "Cancellation releases refresh guard")
         fetcher.data = feed("")
         await store.refresh()
-        check(store.health == .unknown && store.items.isEmpty && store.failure == nil, "Empty success stays unconfirmed")
+        check(store.health == .quiet && store.items.isEmpty && store.failure == nil, "Empty success reports no recent reports without claiming recovery")
         fetcher.data = Data("<broken>".utf8)
         await store.refresh()
         check(store.failure?.category == "Unreadable feed", "Parser failure diagnosable")

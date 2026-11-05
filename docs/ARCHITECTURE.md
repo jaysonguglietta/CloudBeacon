@@ -1,39 +1,48 @@
-# Architecture and trust boundaries
+# Architecture and trust boundaries — 1.2
 
 ## Components
 
-- `Sources/StatusCore/Feed.swift`: bounded UTF-8 RSS parsing, safe plain text conversion, stable identity, date handling, and conservative title-prefix inference.
-- `Sources/StatusCore/FeedTransport.swift`: fixed-endpoint HTTPS client, ephemeral URLSession, redirect rejection, response/stream limits, cancellation, and no cookies/credential storage.
-- `Sources/StatusCore/StatusSnapshot.swift`: one authoritative status interpretation and sanitized error categories.
-- `Sources/StatusCore/FeedMonitor.swift`: observable application state, injected transport and wall/elapsed clocks, retry scheduling, published freshness, preferences, bounded diagnostics, and optional snapshot persistence.
-- `Sources/StatusCore/SnapshotCache.swift`: versioned JSON snapshot, atomic write, read/size/schema checks, and explicit clear.
-- `Sources/AWSStatus/FeedStore.swift`: application delegate and monitoring service. The delegate starts/stops monitoring; neither menu label appearance nor popover visibility owns the polling lifetime. Separate heartbeat and fetch tasks keep freshness observable during requests. Wake and network path changes request bounded recovery.
-- `Sources/AWSStatus/SettingsController.swift`: reconciles ServiceManagement state on activation/settings access and exposes version/support metadata.
-- `Sources/AWSStatus/AWSStatusApp.swift`: native SwiftUI menu bar label, status guide, lazy history, search, stable expansion state, settings, copy preview, and confirmation UI.
-- `Sources/AWSStatus/StatusIcon.swift`: one shared color/symbol presentation with original-color menu bar drawing and non-color state marks.
+- `Feed.swift`: bounded RSS parser, stable hashed identity, safe linear plain-text/entity conversion, date handling, conservative title-prefix inference.
+- `FeedCatalog.swift` and bundled `Resources/aws-feeds.json`: validated AWS metadata snapshot, fixed-host feed descriptors, and shared 24-hour `RecentWindow` policy.
+- `FeedTransport.swift`: fixed HTTPS host/path construction, validated ASCII feed ID, ephemeral URLSession, rejected redirects, timeouts, cancellation, declared/actual response limits.
+- `StatusSnapshot.swift`: per-feed confidence/health and sanitized error categories.
+- `FeedMonitor.swift`: independent per-feed scheduling, injected wall/elapsed clocks and transport, published freshness, retry state, filtered items, optional bounded snapshots.
+- `WatchStore.swift`: persisted selection (maximum 20), three-worker task group, cancellation/generation isolation, per-feed coverage, scoped timeline and aggregate indicator.
+- `SnapshotCache.swift`: atomic versioned JSON snapshots with size/item/identity limits; the original feed's filename is preserved for migration, other feeds have independent files.
+- `NotificationPolicy.swift`: pure baseline/deduplication/coalescing policy, bounded persisted fingerprints, and publication-age/deselection retention decisions.
+- `NotificationController.swift`: user-initiated macOS permission, serialized native delivery, safe fixed-dashboard click, cleanup and recovery/status messages.
+- `FeedStore.swift`: application-owned monitoring service, separate freshness heartbeat, wake/connectivity hooks, app delegate.
+- `SettingsController.swift`: OS login-item reconciliation and version metadata.
+- `AWSStatusApp.swift`, `WatchlistEditor.swift`, `StatusIcon.swift`: native menu bar/popover, shared status marks/colors, staged region/service picker, coverage, recent timeline, settings, local copy previews and confirmations.
 
-## State transitions
+All core files are under `Sources/StatusCore`; app integration/UI is under `Sources/AWSStatus`. Apple frameworks supply networking, cryptography, notifications, and UI. No third-party dependencies or backend are present.
 
-Launch starts unconfirmed; if opted in, a valid saved snapshot is readable but unconfirmed. A successful fetch parses first, then atomically replaces the visible item collection and records a successful check. Snapshot evaluation returns the latest dated report's inferred health only when freshness, transport outcome, and all publication dates permit it. Any missing/future date blocks a healthy interpretation because ordering cannot be trusted. Resolution refers to the latest report only, never all AWS incidents.
+## State and scheduling
 
-Normal requests follow the selected 1/5/15 minute interval, measured with an elapsed clock derived from `ContinuousClock`. Human-readable times use the wall clock. The normal schedule resets after success. Failed requests preserve items, become unconfirmed, and retry after 30/60/120/240/300 seconds. A successful request resets failure backoff. Manual refresh is available when no request is active; changing the interval explicitly reschedules normal cadence. Wake/reconnect recovery has a 15-second attempt cooldown, and all paths share the single-flight guard.
+The watchlist defaults to the original UAE feed only when no selection has been saved. An explicit empty selection persists and does not fetch. Selected IDs must occur in the bundled catalog and satisfy the 20-feed bound. Staged edits apply only on Save. A selection change cancels the active generation, deletes removed feeds' optional snapshots, and creates the new monitor set; late results cannot publish into it.
 
-The monitor's transport and clock are injected in tests. Parser work runs in a cancellation-propagating detached task, while UI state updates remain on the main actor. Network byte accumulation is outside the UI actor. Freshness is republished at a five-second heartbeat. Status never expires from disruption to resolved just because a report is old.
+Each monitor uses an elapsed clock based on ContinuousClock for cadence and the wall clock for dates/display. Success resets retry state and schedules the chosen interval. Failures preserve recent history, produce unconfirmed coverage, and back off at 30/60/120/240/300 seconds. Recovery has a 15-second attempt cooldown. One request is active per monitor and three per watchlist batch. A separate five-second freshness heartbeat continues during network requests and closed-popover use. Stop/cancellation propagates to transport and detached parsing.
 
-## Stable updates and text safety
+Snapshots evaluate raw parsed dates conservatively, but published timeline/cache items are filtered to the last 24 hours. Undated or far-future items block confidence. Empty/old-only successful feeds become quiet green with explicit no-recent-reports wording. Aging out is not incident resolution. Aggregate known disruption/degradation wins but discloses incomplete coverage; without a known issue, any unconfirmed feed blocks green. Quiet and resolved states never claim global/account health.
 
-Item IDs hash the normalized GUID with SHA-256; no-GUID items hash length-prefixed title, raw date, and body content. A prepend does not change existing identities. Exact duplicate GUID entries are collapsed; conflicting reuse is rejected as ambiguous. Duplicate-free item IDs let expansion survive refresh; items removed from the feed release their expansion state.
+## Notifications and retention
 
-Descriptions are rendered as literal Text, never HTML. Bounded linear tag stripping preserves block/line boundaries and unmatched markup; common and numeric entities are decoded without WebKit, resource loading, or script execution. Output is never used as code, a shell argument, a filename, or an outbound URL.
+Alerts are opt-in, with OS authorization requested only by the toggle. OS authorization and the app's enabled preference are separate and rechecked on activation. The pure ledger baselines the first check, fingerprints GUID/title/body/date plus feed scope, ignores older/future reports, respects resolution preference, and coalesces to one newest eligible report per feed/check. It persists bounded hashes/expiries, not report bodies. Restart does not replay seen reports. Disabling/re-enabling baselines again.
 
-## Limits and storage
+The controller serializes deliveries to avoid ledger races, checks selection/time eligibility before and after native submission, and records deduplication success only after acceptance. Failure remains retryable. macOS/Focus control actual banners; acceptance is not a presentation receipt. Notification clicks use a fixed AWS Health destination, not feed-provided URLs.
 
-Parser: at most 2,000,000 response bytes, 512 unique items, 16 XML levels, 100,000 delegate callbacks, a two-second callback budget, 4,096-byte titles/GUIDs, and 262,144-byte descriptions. DTD/entity declarations, non-RSS roots, duplicate channels, ambiguous nested item fields, and malformed XML are rejected. Input is untrusted even when served by AWS.
+Delivered notices carry source feed ID and publication-plus-24-hour expiry. Cleanup queries this app's own notices and removes expired/deselected ones. It runs on launch, activation, wake, successful-check callbacks and a minute heartbeat. Confirmed manual clear does not reset deduplication. While quit/asleep, no process code can run; cleanup catches up afterward.
 
-Preferences contain refresh interval and the offline-copy choice. Offline content is opt-in and stays in one JSON file under the sandboxed Application Support/CloudBeacon directory. A saved snapshot has schema version 1 and a retrieval timestamp. It is bounded to 2 MB and 512 items; corrupt/unsupported data is discarded with visible recovery guidance. It cannot confer fresh status. In-memory diagnostics retain ten sanitized outcomes. No analytics or automatic uploads exist.
+## Parsing, identity, and resource bounds
 
-## Boundaries and distribution
+Feed IDs are catalog-derived lowercase ASCII letters/digits/hyphens, never arbitrary URLs. TLS uses system validation and redirects are rejected. Responses are capped at 2 MB; parser limits are 512 unique items, 16 levels, 100,000 callbacks, a two-second cooperative callback budget, 4,096-byte titles/GUIDs, 256-byte dates, and 262,144-byte descriptions. DTD/entities, invalid RSS hierarchy, duplicate recognized fields, conflicting GUIDs, and ambiguous nested field markup are rejected. These are cooperative bounds, not immunity to framework defects.
 
-Only the fixed HTTPS AWS RSS endpoint is fetched, with system certificate checks. The user-invoked dashboard link is fixed. The app has App Sandbox and outbound networking entitlements; no filesystem expansion, inbound server, AWS keys, tenant boundary, or backend exists.
+GUID hashes remain stable across prepend/reorder; length-prefixed content hashes handle absent GUIDs. Exact duplicates collapse; conflicting reuse fails closed. Scoped timeline IDs add the feed identity. Description conversion preserves safe block/line structure and decodes bounded entities in a linear scan. It never executes HTML, JavaScript, external resources, shell code, or file paths.
 
-Local bundles retain `com.local.awspulse` to preserve preferences/login continuity through the CloudBeacon rename. A public release identity is a deliberate deployment decision with migration implications. Ad-hoc signing is local integrity packaging, not publisher authentication. Release mode requires external Developer ID credentials and notarization and fails closed without them.
+## Storage, catalog, and distribution
+
+Preferences hold selection, cadence, offline-copy choice, notification options, and bounded deduplication state. Optional recent snapshots live in the sandboxed Application Support/CloudBeacon folder; saved-only data is always unconfirmed. Cache corruption/limits fail safely with recovery messaging. Disabling storage clears watched snapshots; removal clears the removed feed's copy. Diagnostic text is sanitized and copied only by explicit user action.
+
+The 5,876-entry catalog snapshot comes from AWS dashboard public metadata, captured November 5, 2026. Runtime prioritizes the catalog in the signed app Resources directory, with SwiftPM/developer fallback. Missing resources expose a fallback notice and only the original feed. Maintainers can refresh through the fixed-source `update-catalog.py` tool and review/test the diff; there is no runtime dashboard script scraping or arbitrary endpoint configuration. Individual feed availability remains an observed per-feed outcome.
+
+App Sandbox permits outbound networking only; hardened runtime remains on. `com.local.awspulse` preserves existing local settings/login/notification identity. Local ad-hoc packaging is not publisher authentication. Developer ID signing, notarization, and clean-Mac checks are required for public binary distribution; credentials remain external to source control.

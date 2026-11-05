@@ -8,9 +8,11 @@ public struct StatusSnapshot: Equatable {
         if savedCopy { return Self(health: .unknown, reason: "Showing a saved copy. Refresh to verify the latest AWS report.") }
         guard checked != nil else { return Self(health: .unknown, reason: "Waiting for the first successful check.") }
         if stale { return Self(health: .unknown, reason: "The last successful check is stale. Refresh to verify this feed.") }
-        guard let latest = items.first else { return Self(health: .unknown, reason: "This feed contains no updates. An empty feed cannot confirm service health.") }
         guard items.allSatisfy({ $0.date.map { $0 <= now.addingTimeInterval(300) } ?? false }) else {
             return Self(health: .unknown, reason: "An update has a missing or future publication date. The newest report cannot be confirmed.")
+        }
+        guard let latest = RecentWindow.items(items, now: now).first else {
+            return Self(health: .quiet, reason: "No reports were published in the last 24 hours. Older reports are hidden; this is not confirmation of recovery or overall AWS health.")
         }
         let health = latest.health(at: now)
         let reason: String
@@ -18,6 +20,7 @@ public struct StatusSnapshot: Equatable {
         case .disruption: reason = "The latest regional RSS report describes a disruption. Reports do not expire into a healthy state."
         case .degraded: reason = "The latest regional RSS report describes degraded service. Check the update for details."
         case .resolved: reason = "The latest report says its issue is resolved. This does not establish that all AWS issues are closed."
+        case .quiet: reason = "No reports were published in the last 24 hours."
         case .unknown: reason = "The latest title uses an unrecognized status. Open AWS Health to confirm its meaning."
         }
         return Self(health: health, reason: reason)

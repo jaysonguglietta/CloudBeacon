@@ -19,8 +19,8 @@ esac
 BUILD_ARGS=(-c release)
 if [[ "${SWIFTPM_DISABLE_SANDBOX:-0}" == 1 ]]; then BUILD_ARGS+=(--disable-sandbox); fi
 if [[ -n "${CLOUDBEACON_BUILD_SYSTEM:-}" ]]; then BUILD_ARGS+=(--build-system "$CLOUDBEACON_BUILD_SYSTEM"); fi
-APP_VERSION="${APP_VERSION:-1.1.0}"
-BUILD_NUMBER="${BUILD_NUMBER:-2}"
+APP_VERSION="${APP_VERSION:-1.2.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-3}"
 [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "APP_VERSION must be x.y.z" >&2; exit 1; }
 [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || { echo "BUILD_NUMBER must be numeric" >&2; exit 1; }
 swift build "${BUILD_ARGS[@]}"
@@ -30,6 +30,7 @@ trap 'rm -rf "$STAGING"' EXIT
 APP="$STAGING/CloudBeacon.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" .build/checks .build/module-cache
 cp .build/release/AWSStatus "$APP/Contents/MacOS/AWSStatus"
+cp Sources/StatusCore/Resources/aws-feeds.json "$APP/Contents/Resources/aws-feeds.json"
 swiftc -module-cache-path .build/module-cache Scripts/GenerateIcon.swift -parse-as-library -o .build/checks/generate-icon
 .build/checks/generate-icon "$STAGING/CloudBeacon.iconset"
 iconutil -c icns "$STAGING/CloudBeacon.iconset" -o "$APP/Contents/Resources/CloudBeacon.icns"

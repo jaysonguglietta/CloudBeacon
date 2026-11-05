@@ -7,8 +7,9 @@ public final class TrustedSession: NSObject, URLSessionTaskDelegate {
     }
 
     // Nonisolated networking keeps byte accumulation off the UI actor.
-    public func fetch(using session: URLSession) async throws -> Data {
-        let url = URL(string: "https://status.aws.amazon.com/rss/multipleservices-me-central-1.rss")!
+    public func fetch(using session: URLSession, feedID: String = FeedDescriptor.original.id) async throws -> Data {
+        guard FeedCatalog.validID(feedID) else { throw FeedError.rejected }
+        let url = URL(string: "https://status.aws.amazon.com/rss/\(feedID).rss")!
         let (bytes, response) = try await session.bytes(from: url)
         guard let http = response as? HTTPURLResponse, response.url == url else { throw FeedError.rejected }
         guard http.statusCode == 200 else { throw FeedError.http(http.statusCode) }
@@ -29,6 +30,7 @@ public protocol FeedFetching {
 
 public final class FeedHTTPClient: FeedFetching {
     private let transport = TrustedSession()
+    private let feedID: String
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 20
@@ -38,7 +40,7 @@ public final class FeedHTTPClient: FeedFetching {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: configuration, delegate: transport, delegateQueue: nil)
     }()
-    public init() {}
-    public func fetch() async throws -> Data { try await transport.fetch(using: session) }
+    public init(feedID: String = FeedDescriptor.original.id) { self.feedID = feedID }
+    public func fetch() async throws -> Data { try await transport.fetch(using: session, feedID: feedID) }
     deinit { session.invalidateAndCancel() }
 }

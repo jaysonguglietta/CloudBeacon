@@ -1,33 +1,32 @@
 # CloudBeacon
 
-A native macOS menu bar companion for public AWS service reports. CloudBeacon watches **Multiple services in Middle East (UAE), `me-central-1`**, using the supplied [AWS RSS feed](https://status.aws.amazon.com/rss/multipleservices-me-central-1.rss). No AWS account, credentials, backend, or third-party packages are required.
+A native macOS menu bar companion for public AWS service reports. Choose the AWS regions and services you care about, see **only the last 24 hours**, and optionally receive native macOS notifications. No AWS account, credentials, server, analytics, or third-party packages are required.
 
 ## At a glance
 
-| Indicator | Meaning |
+| Indicator | Meaning within your selected feeds |
 |---|---|
-| Red × | The latest regional report describes a disruption |
-| Amber ! | The latest regional report describes degradation |
-| Green ✓ | The latest report says **its issue** is resolved |
-| Gray ? | Status is unconfirmed: connection failure, stale check, saved copy, empty feed, unfamiliar wording, or unreliable publication date |
+| Red × | A latest recent report describes disruption |
+| Amber ! | A latest recent report describes degradation |
+| Green ✓ | No reports were published in the last 24 hours, or latest recent reports indicate resolution |
+| Gray ? | Coverage is incomplete, stale, saved/offline, undated, or otherwise unconfirmed |
 
-**Green is not an all-clear for AWS.** This is one public regional RSS feed, not account-specific resource health or an availability measurement. Old unresolved reports never become green just because time passes. AWS notes that RSS formats can change and may omit relevant event data; see the [AWS Health documentation](https://docs.aws.amazon.com/health/latest/ug/aws-health-dashboard-status.html).
+**Green is scoped to your 24-hour report window, not an AWS-wide all-clear.** An older report aging out is hidden, not marked recovered. AWS [notes that RSS formats may change and may omit relevant event data](https://docs.aws.amazon.com/health/latest/ug/aws-health-dashboard-status.html).
 
 ## Features
 
-- Colored menu bar indicator with distinct glyphs, accessible state text, and a built-in status guide.
-- Application-owned polling, independent of the popover, at 1, 5, or 15 minutes (default: 5).
-- Retry backoff of 30, 60, 120, 240, then 300 seconds after failures; wake/connectivity recovery; one active request at a time.
-- Published freshness state, dated last-success information, and visible next-check time.
-- Searchable chronological update timeline, stable item identities, preserved expansion, readable paragraphs, and text selection.
-- Optional offline saved copy, **off by default**, with explicit unconfirmed state and a confirmed clear action.
-- Launch-at-login controls that reconcile external approval/revocation when the app activates or settings opens.
-- Preview-and-copy update summaries and bounded, privacy-safe support diagnostics.
-- Native app icon, sandboxing, hardened runtime, bounded parsing, fixed HTTPS destinations, and redirect rejection.
+- **Choose regions and services:** Settings → Choose regions and services. Search the bundled AWS catalog, select service/region pairs, and save. Up to 20 feeds; the original UAE multiple-services feed remains the default on upgrade.
+- **Per-feed coverage:** inspect each selected feed's result, source scope, and last successful check. Failed feeds cannot silently become green; known issues remain visible with an incomplete-coverage warning.
+- **Rolling 24 hours:** old reports disappear from timeline, summaries, saved snapshots, and notification eligibility, including at the freshness heartbeat without new network data.
+- **Native notifications:** opt in from Settings; control resolution alerts and sound. New reports are deduplicated across polls/restarts, one newest eligible report per feed/check. First checks establish a baseline, avoiding a history flood.
+- **Notification cleanup:** delivered CloudBeacon alerts expire 24 hours after report publication. Cleanup runs on launch, activation, wake, successful checks, and roughly every minute while running. Removed feeds' delivered alerts are cleared too. Manual clear includes confirmation and does not replay seen reports.
+- **Dependable polling:** 1/5/15-minute cadence, bounded three-request concurrency, per-feed retries, cancellation on watchlist changes, wake/reconnect recovery, published freshness, and app-owned lifetime.
+- **Readable updates:** searchable timeline with feed labels, stable expansion, safe paragraphs/entities, copy previews, and local diagnostics.
+- **Local privacy:** optional offline snapshots (off by default), bounded hashed notification deduplication metadata, launch-at-login reconciliation, App Sandbox, hardened runtime, fixed-host HTTPS RSS, and rejected redirects.
 
-## Requirements and build
+## Build and run
 
-Declared target: macOS 13 or newer. A compatible Apple Swift toolchain is required; full Xcode is needed for XCTest. The minimum OS and Intel compatibility require manual release testing; compilation on one development Mac is not a compatibility certification.
+Declared target: macOS 13+. A compatible Apple Swift toolchain is needed; full Xcode is needed for XCTest. Only tested OS/architecture combinations should be advertised as supported.
 
 ```sh
 bash Scripts/check-all.sh
@@ -35,38 +34,38 @@ bash Scripts/build-app.sh --local
 open "dist/CloudBeacon.app"
 ```
 
-The app runs in the menu bar without a Dock icon. Quit before replacing it. Move one copy to Applications for regular use, then optionally enable **Launch at login** in Settings. Do not run duplicate copies.
+CloudBeacon lives in the menu bar without a Dock icon. Quit before replacing the bundle. For regular use, install **one** copy in Applications, then optionally enable Launch at login.
 
-On this development Mac, the default Swift build backend fails to initialize with `Unknown error parsing property list`. The explicit compatibility workaround is:
+This development Mac's default build backend cannot initialize. Its explicit local workaround is:
 
 ```sh
 CLOUDBEACON_BUILD_SYSTEM=native bash Scripts/build-app.sh --local
 ```
 
-The legacy backend is deprecated by Swift. It is an opt-in local workaround, not the default release requirement. Full Xcode on this Mac also requires the user to review/accept its license before use; scripts do not accept licenses or change developer-tool selection.
+The legacy backend is deprecated and is not the default release requirement. Full Xcode may require the user to accept its license; scripts do not accept licenses or change tool selection.
 
-## Verification
+## Verification and documentation
 
 ```sh
-bash Scripts/check-all.sh      # offline parser, security, and monitor checks
-swift test                    # XCTest, with a functioning full-Xcode toolchain
-bash Scripts/check-live.sh     # optional real AWS request; needs internet
+bash Scripts/check-all.sh      # offline parser, security, monitor, watchlist/alert/window checks
+swift test                    # XCTest on a functioning full-Xcode toolchain
+bash Scripts/check-live.sh     # optional real AWS request; requires internet
 codesign --verify --strict "dist/CloudBeacon.app"
 ```
 
-The check suite is also configured in [GitHub Actions](.github/workflows/ci.yml). Do not infer that a workflow passed merely because its configuration exists. Current executed results and manual verification limits are recorded in [remediation notes](docs/REMEDIATION.md).
+[GitHub CI](.github/workflows/ci.yml) runs XCTest, offline checks, a local build, and bundle verification. Native permission prompts, banner display/Focus, keyboard/VoiceOver, and login/reboot behavior require manual acceptance; policy tests do not claim to exercise macOS Notification Center.
 
-## Documentation
+- [User guide](docs/USER_GUIDE.md)
+- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
+- [Testing and manual acceptance](docs/TESTING.md)
+- [Signing, notarization, and releases](docs/RELEASING.md)
+- [Remediation/feature status](docs/REMEDIATION.md)
+- [Security policy](SECURITY.md) and [historical review](SECURITY_REVIEW.md)
 
-- [User guide](docs/USER_GUIDE.md) — everyday use, settings, status interpretation, and recovery.
-- [Architecture](docs/ARCHITECTURE.md) — state, scheduling, parser, trust boundaries, and storage.
-- [Testing](docs/TESTING.md) — automated checks and the macOS manual acceptance matrix.
-- [Release guide](docs/RELEASING.md) — versioning, signing, notarization, upgrade checks, and local builds.
-- [Remediation tracker](docs/REMEDIATION.md) — findings addressed, evidence, and remaining gates.
-- [Security policy](SECURITY.md) and [security review and remediation](SECURITY_REVIEW.md).
+## Catalog, privacy, and limits
 
-## Privacy and limits
+The bundled catalog contains 5,876 public service/region pairs from [AWS dashboard metadata](https://servicedata-us-east-1-prod.s3.amazonaws.com/services.json), captured November 5, 2026. It reflects that snapshot, not guaranteed future availability. A selected feed that fails is explicitly unconfirmed. Global services are shown in a Global region. Update the catalog with `python3 Scripts/update-catalog.py`, review the diff, and run tests before shipping. App runtime never downloads or executes dashboard JavaScript or accepts arbitrary feed URLs.
 
-AWS receives your network's public IP during checks. No analytics or automatic diagnostic uploads are implemented. Without offline storage enabled, incident content stays in memory. When enabled, one bounded snapshot is saved in the sandboxed app container; disabling the option attempts to delete it, and any failure is shown with a retryable Clear action. Diagnostics contain app/OS version, public feed scope, timestamps, and sanitized outcomes, not credentials or local paths.
+AWS sees your public IP during checks. Notification preferences and bounded hashes/expiry times are stored locally for deduplication. Full report bodies are saved by CloudBeacon only if offline copies are enabled; macOS also retains delivered alert titles until cleanup. Disabling saved updates deletes snapshots for currently watched feeds; deselection clears the removed feed's snapshot. Diagnostic previews are copied locally, never automatically uploaded.
 
-The app cannot poll while the Mac sleeps and is not a paging service. It does not send notifications or monitor additional feeds. Those were review hypotheses, not confirmed defects; they remain optional future work pending actual user requirements. Public distribution requires a Developer ID identity and successful notarization; the local bundle is ad-hoc signed.
+macOS controls notification permission, banners, sounds, Focus, and delivery. A queued request is not proof a banner appeared. The app cannot fetch or clean Notification Center while quit/asleep; expired alerts are removed when it runs again. This is an informational RSS monitor, not guaranteed paging or account-specific resource health. Public binary distribution still requires Developer ID signing and notarization; local output is ad-hoc signed.

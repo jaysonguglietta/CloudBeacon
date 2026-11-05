@@ -2,12 +2,13 @@ import Foundation
 import CryptoKit
 
 public enum Health: String, Codable, Sendable {
-    case disruption, degraded, resolved, unknown
+    case disruption, degraded, resolved, quiet, unknown
     public var label: String {
         switch self {
         case .disruption: return "Service disruption reported"
         case .degraded: return "Service degradation reported"
         case .resolved: return "Latest issue reported resolved"
+        case .quiet: return "No reports in the last 24 hours"
         case .unknown: return "Status unconfirmed"
         }
     }
